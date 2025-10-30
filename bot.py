@@ -115,6 +115,26 @@ def support_footer():
     return f"\n\n📞 Support: {SUPPORT_CONTACT}"
 
 
+def build_vpn_detail_text(vpn_name, days, price, balance, extra_lines=None, include_footer=True):
+    lines = [
+        f"🛍 {vpn_name}",
+        f"🕒 Duration: {days} দিন",
+        f"💰 Price: ৳{price}",
+        f"💳 Your Balance: ৳{balance:.2f}",
+        "📦 Quantity selection: 'কয়টা নিবেন নিচে সিলেক্ট করুন'"
+    ]
+
+    if extra_lines:
+        lines.append("")
+        lines.extend(extra_lines)
+
+    detail_text = "\n".join(lines)
+    if include_footer:
+        detail_text += support_footer()
+
+    return detail_text
+
+
 def build_quantity_keyboard(vpn_name, max_qty, selected_qty=None, include_confirm=False):
     markup = InlineKeyboardMarkup(row_width=3)
 
@@ -295,22 +315,13 @@ def show_vpn_list(message):
         key=lambda item: (0 if len(products.get(item[0], [])) > 0 else 1, item[0].lower())
     )
 
-    lines = [
-        "🛍 *VPN Catalog*",
-        "════════════════",
-    ]
-
     buttons = []
     markup = InlineKeyboardMarkup(row_width=2)
 
     for name, data_item in sorted_vpns:
-        price = data_item["price"]
-        days = data_item["days"]
         stock_count = len(products.get(name, []))
         in_stock = stock_count > 0
         status_icon = "✅" if in_stock else "🔴"
-        stock_note = f"{stock_count} left" if in_stock else "Out of stock"
-        lines.append(f"{status_icon} *{name}* — {days}d · {price}৳ ({stock_note})")
 
         button_text = f"{status_icon} {name}" if in_stock else f"{status_icon} {name}"
         buttons.append(InlineKeyboardButton(button_text, callback_data=f"vpn|{name}"))
@@ -321,7 +332,13 @@ def show_vpn_list(message):
 
     markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
 
-    catalog_text = "\n".join(lines) + support_footer()
+    intro_lines = [
+        "🛍️ *VPN কেনার মেনু*",
+        "নিচের বোতামগুলো থেকে আপনার পছন্দের VPN নির্বাচন করুন।",
+        "প্রতিটি VPN-এ ক্লিক করলে বিস্তারিত বাংলায় দেখতে পারবেন।"
+    ]
+
+    catalog_text = "\n".join(intro_lines) + support_footer()
     bot.send_message(message.chat.id, catalog_text, reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("vpn|"))
@@ -340,11 +357,13 @@ def vpn_selected(c):
     stock_count = len(products.get(vpn_name, []))
 
     if stock_count == 0:
-        safe_answer_callback(c.id, text="This VPN is currently out of stock. Please choose another.", show_alert=True)
-        message_text = (
-            f"🛍 *{vpn_name}* ({days} Days)\n"
-            f"Price: {price}৳\n"
-            "🚫 This VPN is currently *Out of Stock*."
+        safe_answer_callback(c.id, text="এই VPN বর্তমানে স্টকে নেই।", show_alert=True)
+        message_text = build_vpn_detail_text(
+            vpn_name,
+            days,
+            price,
+            bal,
+            extra_lines=["🚫 এই VPN বর্তমানে স্টকে নেই।"]
         )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
@@ -355,13 +374,16 @@ def vpn_selected(c):
     max_qty = min(stock_count, affordable_qty, MAX_PURCHASE_QUANTITY)
 
     if max_qty <= 0:
-        safe_answer_callback(c.id, text="Insufficient balance. Please add funds.", show_alert=True)
-        message_text = (
-            f"🛍 *{vpn_name}* ({days} Days)\n"
-            f"Price: {price}৳\n"
-            f"Available Stock: {stock_count}\n"
-            f"Your Balance: {bal:.2f}৳\n\n"
-            "💰 Your balance isn't enough for this VPN."
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।", show_alert=True)
+        message_text = build_vpn_detail_text(
+            vpn_name,
+            days,
+            price,
+            bal,
+            extra_lines=[
+                f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
+                "💰 আপনার ব্যালেন্স এই VPN নেওয়ার জন্য পর্যাপ্ত নয়। আগে ব্যালেন্স যোগ করুন।"
+            ]
         )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
@@ -375,13 +397,16 @@ def vpn_selected(c):
         "max_qty": max_qty
     }
 
-    instruction_text = (
-        f"🛍 *{vpn_name}* ({days} Days)\n"
-        f"Price per VPN: {price}৳\n"
-        f"Available Stock: {stock_count}\n"
-        f"Your Balance: {bal:.2f}৳\n"
-        f"Maximum you can buy now: {max_qty}\n\n"
-        "🔢 Select how many you want to buy:"
+    instruction_text = build_vpn_detail_text(
+        vpn_name,
+        days,
+        price,
+        bal,
+        extra_lines=[
+            f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
+            f"আপনার ব্যালেন্স অনুযায়ী সর্বোচ্চ {max_qty} টি নিতে পারবেন।",
+            "নিচের বোতাম থেকে পছন্দের সংখ্যাটি নির্বাচন করুন।"
+        ]
     )
 
     markup = build_quantity_keyboard(vpn_name, max_qty)
@@ -414,32 +439,50 @@ def select_quantity(c):
     stock_count = len(products.get(vpn_name, []))
 
     if stock_count == 0:
-        bot.edit_message_text("🚫 This VPN just went out of stock. Please choose another.", c.message.chat.id, c.message.message_id)
-        safe_answer_callback(c.id, text="Out of stock.", show_alert=True)
+        detail_text = build_vpn_detail_text(
+            vpn_name,
+            days,
+            price,
+            bal,
+            extra_lines=["🚫 এই VPN এখনই স্টকে নেই।"]
+        )
+        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, parse_mode="Markdown")
+        safe_answer_callback(c.id, text="স্টক নেই।", show_alert=True)
         return
 
     affordable_qty = int(bal // price)
     max_qty = min(stock_count, affordable_qty, MAX_PURCHASE_QUANTITY)
 
     if max_qty <= 0:
-        message_text = "💰 Your balance isn't enough for this VPN. Please add funds and try again."
+        message_text = build_vpn_detail_text(
+            vpn_name,
+            days,
+            price,
+            bal,
+            extra_lines=[
+                "💰 আপনার ব্যালেন্স পর্যাপ্ত নয়। আগে ব্যালেন্স যোগ করে আবার চেষ্টা করুন।"
+            ]
+        )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
         markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="Insufficient balance.", show_alert=True)
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।", show_alert=True)
         return
 
     if selected_qty < 1 or selected_qty > max_qty:
-        safe_answer_callback(c.id, text=f"Please choose between 1 and {max_qty}.", show_alert=True)
+        safe_answer_callback(c.id, text=f"১ থেকে {max_qty} এর মধ্যে সংখ্যা নির্বাচন করুন।", show_alert=True)
         markup = build_quantity_keyboard(vpn_name, max_qty)
-        instruction_text = (
-            f"🛍 *{vpn_name}* ({days} Days)\n"
-            f"Price per VPN: {price}৳\n"
-            f"Available Stock: {stock_count}\n"
-            f"Your Balance: {bal:.2f}৳\n"
-            f"Maximum you can buy now: {max_qty}\n\n"
-            "🔢 Select how many you want to buy:"
+        instruction_text = build_vpn_detail_text(
+            vpn_name,
+            days,
+            price,
+            bal,
+            extra_lines=[
+                f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
+                f"আপনার ব্যালেন্স অনুযায়ী সর্বোচ্চ {max_qty} টি নিতে পারবেন।",
+                f"অনুগ্রহ করে ১ থেকে {max_qty} এর মধ্যে একটি সংখ্যা নির্বাচন করুন।"
+            ]
         )
         bot.edit_message_text(instruction_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
         return
@@ -454,18 +497,23 @@ def select_quantity(c):
         "max_qty": max_qty
     }
 
-    summary_text = (
-        f"🛍 *{vpn_name}* ({days} Days)\n"
-        f"Selected Quantity: {selected_qty}\n"
-        f"Total Cost: {total_cost:.2f}৳\n"
-        f"Your Balance: {bal:.2f}৳ (after purchase: {remaining_balance:.2f}৳)\n"
-        f"Stock remaining after purchase: {max(remaining_stock, 0)}\n\n"
-        "✅ Tap *Confirm Purchase* to continue or pick another quantity."
+    summary_text = build_vpn_detail_text(
+        vpn_name,
+        days,
+        price,
+        bal,
+        extra_lines=[
+            f"✅ নির্বাচিত সংখ্যা: {selected_qty} টি",
+            f"মোট খরচ হবে: ৳{total_cost:.2f}",
+            f"ক্রয়ের পর ব্যালেন্স থাকবে: ৳{remaining_balance:.2f}",
+            f"স্টকে বাকি থাকবে আনুমানিক {max(remaining_stock, 0)} টি।",
+            "নিচের ✅ কনফার্ম বোতামে চাপুন অথবা অন্য সংখ্যা নির্বাচন করুন।"
+        ]
     )
 
     markup = build_quantity_keyboard(vpn_name, max_qty, selected_qty=selected_qty, include_confirm=True)
     bot.edit_message_text(summary_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-    safe_answer_callback(c.id, text=f"Quantity set to {selected_qty}")
+    safe_answer_callback(c.id, text=f"{selected_qty} টি নির্বাচন করা হয়েছে")
 
 @bot.callback_query_handler(func=lambda c: c.data == "cancel_vpn_selection")
 def cancel_vpn_selection(c):
@@ -524,13 +572,16 @@ def confirm_purchase_callback(c):
         max_qty = min(stock_count, affordable_qty, MAX_PURCHASE_QUANTITY)
 
         if max_qty > 0:
-            message_text = (
-                f"🛍 *{vpn_name}* ({days} Days)\n"
-                f"Price per VPN: {price}৳\n"
-                f"Available Stock: {stock_count}\n"
-                f"Your Balance: {bal:.2f}৳\n"
-                f"Maximum you can buy now: {max_qty}\n\n"
-                f"🚫 Only {stock_count} account(s) left. Please choose up to {max_qty}."
+            message_text = build_vpn_detail_text(
+                vpn_name,
+                days,
+                price,
+                bal,
+                extra_lines=[
+                    f"স্টকে আছে মাত্র {stock_count} টি অ্যাকাউন্ট।",
+                    f"অনুগ্রহ করে সর্বোচ্চ {max_qty} টি পর্যন্ত নির্বাচন করুন।",
+                    "নিচের বোতাম থেকে নতুন সংখ্যা বেছে নিন।"
+                ]
             )
             markup = build_quantity_keyboard(vpn_name, max_qty)
             user_sessions[uid] = {
@@ -538,27 +589,38 @@ def confirm_purchase_callback(c):
                 "max_qty": max_qty
             }
         else:
-            message_text = (
-                "🚫 This VPN is currently unavailable for your balance/stock."
+            message_text = build_vpn_detail_text(
+                vpn_name,
+                days,
+                price,
+                bal,
+                extra_lines=["🚫 এই মুহূর্তে স্টক বা ব্যালেন্সের কারণে এই VPN নেওয়া যাচ্ছে না।"]
             )
             markup = InlineKeyboardMarkup()
             markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
 
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="Insufficient stock.", show_alert=True)
+        safe_answer_callback(c.id, text="স্টক সীমিত।", show_alert=True)
         return
 
     total_cost = price * qty
     if bal < total_cost:
-        message_text = (
-            f"💰 You need {total_cost:.2f}৳ but only have {bal:.2f}৳.\n"
-            "Add balance and try again."
+        message_text = build_vpn_detail_text(
+            vpn_name,
+            days,
+            price,
+            bal,
+            extra_lines=[
+                f"এই ক্রয়ের জন্য মোট দরকার: ৳{total_cost:.2f}",
+                f"বর্তমানে আপনার ব্যালেন্স আছে: ৳{bal:.2f}",
+                "💰 প্রথমে ব্যালেন্স যোগ করে আবার চেষ্টা করুন।"
+            ]
         )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
         markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="Insufficient balance.", show_alert=True)
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।", show_alert=True)
         return
 
     selected_items = [vpn_stock.pop(0) for _ in range(qty)]
@@ -597,8 +659,8 @@ def confirm_purchase_callback(c):
     detail_message = "\n".join(detail_lines).strip() + support_footer()
 
     bot.edit_message_text(detail_message, c.message.chat.id, c.message.message_id, parse_mode="Markdown")
-    bot.send_message(c.message.chat.id, "✅ Purchase successful! Check '📦 My Orders' for your VPN details.", reply_markup=main_menu_markup())
-    safe_answer_callback(c.id, text="Purchase successful!", show_alert=True)
+    bot.send_message(c.message.chat.id, "✅ ক্রয় সফল হয়েছে! আপনার VPN বিস্তারিত দেখতে '📦 My Orders' এ যান।", reply_markup=main_menu_markup())
+    safe_answer_callback(c.id, text="ক্রয় সফল হয়েছে!", show_alert=True)
 
     user_sessions.pop(uid, None)
 
