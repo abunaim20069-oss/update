@@ -1264,6 +1264,10 @@ def show_requested_orders(message):
                 bot.send_message(message.chat.id, f"ℹ️ আরও {remaining} টি অনুরোধ রয়েছে। অতিরিক্ত অনুরোধ দেখতে আবার কমান্ডটি ব্যবহার করুন।" + support_footer(), parse_mode="Markdown")
             break
 
+    broadcast_kb = InlineKeyboardMarkup()
+    broadcast_kb.add(InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast_requests"))
+    bot.send_message(message.chat.id, "📣 একসাথে মেসেজ পাঠাতে 'Broadcast Message' ক্লিক করুন।", reply_markup=broadcast_kb)
+
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_confirm_trx|"))
 def admin_confirm_trx(c):
     if str(c.from_user.id) != str(ADMIN_ID):
@@ -1540,6 +1544,70 @@ def admin_reject_request(c):
     )
 
     safe_answer_callback(c.id, text="Request rejected.")
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "admin_broadcast_requests")
+def admin_broadcast_requests(c):
+    if str(c.from_user.id) != str(ADMIN_ID):
+        safe_answer_callback(c.id, text="Unauthorized")
+        return
+
+    pending_users = {req["user_id"] for req in requested_orders if req.get("status", "pending") == "pending"}
+
+    if not pending_users:
+        safe_answer_callback(c.id, text="📭 কোনো পেন্ডিং অনুরোধ নেই।")
+        bot.send_message(c.message.chat.id, "✅ বর্তমানে কোনো পেন্ডিং VPN অনুরোধ নেই।")
+        return
+
+    admin_sessions[c.from_user.id] = {
+        "type": "broadcast_request",
+        "targets": list(pending_users)
+    }
+
+    prompt = bot.send_message(
+        c.message.chat.id,
+        "📝 যে বার্তাটি সকল পেন্ডিং অনুরোধকারীদের পাঠাতে চান, সেটি লিখুন।",
+        reply_markup=ForceReply()
+    )
+    bot.register_next_step_handler(prompt, process_broadcast_message)
+    safe_answer_callback(c.id, text="Compose broadcast message")
+
+
+def process_broadcast_message(message):
+    if str(message.from_user.id) != str(ADMIN_ID):
+        bot.reply_to(message, "Unauthorized.")
+        return
+
+    session = admin_sessions.get(message.from_user.id)
+    if not session or session.get("type") != "broadcast_request":
+        bot.reply_to(message, "❌ এই মুহূর্তে কোনো ব্রডকাস্ট সেশন নেই।", reply_markup=admin_menu_markup())
+        return
+
+    broadcast_text = (message.text or "").strip()
+    if not broadcast_text:
+        retry = bot.reply_to(message, "❌ বার্তাটি খালি হতে পারে না।", reply_markup=ForceReply())
+        bot.register_next_step_handler(retry, process_broadcast_message)
+        return
+
+    targets = session.get("targets", [])
+    delivered = 0
+    failed = 0
+
+    for uid in targets:
+        try:
+            bot.send_message(int(uid), broadcast_text)
+            delivered += 1
+        except Exception as exc:
+            failed += 1
+            print(f"[WARN] Broadcast to {uid} failed: {exc}")
+
+    admin_sessions.pop(message.from_user.id, None)
+
+    bot.reply_to(
+        message,
+        f"📢 Broadcast summary:\n✅ Delivered: {delivered}\n⚠️ Failed: {failed}",
+        reply_markup=admin_menu_markup()
+    )
 
 
 @bot.message_handler(func=lambda m: norm_text(m.text) == "👥 user lookup" and str(m.from_user.id) == str(ADMIN_ID))
