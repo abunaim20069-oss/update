@@ -407,7 +407,7 @@ def vpn_selected(c):
         )
         markup = build_single_purchase_markup(vpn_name, allow_purchase=True)
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="বর্তমানে স্টক নেই।")
+        safe_answer_callback(c.id, text="বর্তমানে স্টক নেই।", show_alert=True)
         return
 
     if max_qty <= 0:
@@ -476,7 +476,7 @@ def select_quantity(c):
             final_line="⚠ বর্তমানে স্টক নেই।"
         )
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="স্টক নেই।")
+        safe_answer_callback(c.id, text="স্টক নেই।", show_alert=True)
         return
 
     affordable_qty = int(bal // price) if price > 0 else stock_count
@@ -626,7 +626,8 @@ def confirm_purchase_callback(c):
                 markup = build_single_purchase_markup(vpn_name, allow_purchase=False, include_add_balance=True)
 
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="এই পরিমাণ এখনই নেই।")
+        show_alert = (stock_count == 0)
+        safe_answer_callback(c.id, text="এই পরিমাণ এখনই নেই।", show_alert=show_alert)
         return
 
     total_cost = price * qty
