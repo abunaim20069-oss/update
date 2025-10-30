@@ -158,6 +158,15 @@ def build_vpn_detail_text(vpn_name, days, price, balance, extra_lines=None, fina
     return detail_text
 
 
+def format_request_pending_message(vpn_name, days):
+    return (
+        f"🛍 {vpn_name}\n\n"
+        f"🕒 Duration:  {days} Days\n \n"
+        f"📩 আপনার {vpn_name} এর অর্ডার সাবমিট হয়েছে | Account করে আপনাকে দেওয়া হবে 💗\n\n"
+        "—ধন্যবাদ 💞"
+    )
+
+
 def build_quantity_keyboard(vpn_name, max_qty, selected_qty=None, include_confirm=False):
     markup = InlineKeyboardMarkup(row_width=3)
 
@@ -518,18 +527,22 @@ def vpn_selected(c):
     pending_request = get_pending_request(uid, vpn_name)
 
     if stock_count == 0:
-        final_line = "⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
-        detail_text = build_vpn_detail_text(
-            vpn_name,
-            days,
-            price,
-            bal,
-            final_line=final_line
-        )
-        state = "pending" if pending_request else "idle"
-        markup = build_request_order_markup(vpn_name, state=state)
-        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।" if pending_request else "বর্তমানে স্টক নেই।", show_alert=not pending_request)
+        if pending_request:
+            detail_text = format_request_pending_message(vpn_name, days)
+            markup = build_request_order_markup(vpn_name, state="pending")
+            bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup)
+            safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।")
+        else:
+            detail_text = build_vpn_detail_text(
+                vpn_name,
+                days,
+                price,
+                bal,
+                final_line="⚠ বর্তমানে স্টক নেই।"
+            )
+            markup = build_request_order_markup(vpn_name, state="idle")
+            bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+            safe_answer_callback(c.id, text="বর্তমানে স্টক নেই।", show_alert=True)
         return
 
     if max_qty <= 0:
@@ -592,17 +605,22 @@ def select_quantity(c):
     pending_request = get_pending_request(uid, vpn_name)
 
     if stock_count == 0:
-        detail_text = build_vpn_detail_text(
-            vpn_name,
-            days,
-            price,
-            bal,
-            final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
-        )
-        state = "pending" if pending_request else "idle"
-        markup = build_request_order_markup(vpn_name, state=state)
-        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।" if pending_request else "স্টক নেই।", show_alert=not pending_request)
+        if pending_request:
+            detail_text = format_request_pending_message(vpn_name, days)
+            markup = build_request_order_markup(vpn_name, state="pending")
+            bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup)
+            safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।")
+        else:
+            detail_text = build_vpn_detail_text(
+                vpn_name,
+                days,
+                price,
+                bal,
+                final_line="⚠ বর্তমানে স্টক নেই।"
+            )
+            markup = build_request_order_markup(vpn_name, state="idle")
+            bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+            safe_answer_callback(c.id, text="স্টক নেই।", show_alert=True)
         return
 
     affordable_qty = int(bal // price) if price > 0 else stock_count
@@ -746,15 +764,9 @@ def confirm_request_submission(c):
         return
 
     if get_pending_request(uid, vpn_name):
-        detail_text = build_vpn_detail_text(
-            vpn_name,
-            vpn_info["days"],
-            vpn_info["price"],
-            balances.get(uid, 0.0),
-            final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।"
-        )
+        detail_text = format_request_pending_message(vpn_name, vpn_info["days"])
         markup = build_request_order_markup(vpn_name, state="pending")
-        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup)
         safe_answer_callback(c.id, text="অনুরোধ ইতোমধ্যে পেন্ডিং।")
         session.pop("request_draft", None)
         if not session:
@@ -777,15 +789,9 @@ def confirm_request_submission(c):
     data["requested_orders"] = requested_orders
     save_data(data)
 
-    detail_text = build_vpn_detail_text(
-        vpn_name,
-        vpn_info["days"],
-        vpn_info["price"],
-        balances.get(uid, 0.0),
-        final_line="✅ আপনার অনুরোধ গ্রহণ করা হয়েছে! স্টক এলেই আপনাকে জানানো হবে।"
-    )
+    detail_text = format_request_pending_message(vpn_name, vpn_info["days"])
     markup = build_request_order_markup(vpn_name, state="pending")
-    bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+    bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup)
 
     safe_answer_callback(c.id, text="অনুরোধ পাঠানো হয়েছে।")
 
@@ -879,15 +885,18 @@ def confirm_purchase_callback(c):
             }
         else:
             if stock_count == 0:
-                message_text = build_vpn_detail_text(
-                    vpn_name,
-                    days,
-                    price,
-                    bal,
-                    final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
-                )
-                state = "pending" if pending_request else "idle"
-                markup = build_request_order_markup(vpn_name, state=state)
+                if pending_request:
+                    message_text = format_request_pending_message(vpn_name, days)
+                    markup = build_request_order_markup(vpn_name, state="pending")
+                else:
+                    message_text = build_vpn_detail_text(
+                        vpn_name,
+                        days,
+                        price,
+                        bal,
+                        final_line="⚠ বর্তমানে স্টক নেই।"
+                    )
+                    markup = build_request_order_markup(vpn_name, state="idle")
             else:
                 message_text = build_vpn_detail_text(
                     vpn_name,
@@ -900,7 +909,7 @@ def confirm_purchase_callback(c):
 
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
         show_alert = (stock_count == 0 and not pending_request)
-        safe_answer_callback(c.id, text="এই পরিমাণ এখনই নেই।", show_alert=show_alert)
+        safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।" if (stock_count == 0 and pending_request) else "এই পরিমাণ এখনই নেই।", show_alert=show_alert)
         return
 
     total_cost = price * qty
