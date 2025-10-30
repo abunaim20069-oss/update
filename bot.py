@@ -193,11 +193,16 @@ def build_single_purchase_markup(vpn_name, allow_purchase=True, include_add_bala
     return markup
 
 
-def build_request_order_markup(vpn_name, request_pending=False):
+def build_request_order_markup(vpn_name, state="idle"):
     markup = InlineKeyboardMarkup()
 
-    if not request_pending:
+    if state == "idle":
         markup.add(InlineKeyboardButton("📩 Request Order", callback_data=f"request_order|{vpn_name}"))
+    elif state == "confirm":
+        markup.add(InlineKeyboardButton("✅ Confirm Request", callback_data=f"confirm_request|{vpn_name}"))
+        markup.add(InlineKeyboardButton("❌ Cancel Request", callback_data=f"cancel_request|{vpn_name}|draft"))
+    elif state == "pending":
+        markup.add(InlineKeyboardButton("❌ Cancel Request", callback_data=f"cancel_request|{vpn_name}|submitted"))
 
     markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
     markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
@@ -216,6 +221,86 @@ def get_pending_request(uid, vpn_name):
         ),
         None
     )
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("cancel_request|"))
+def cancel_user_request(c):
+    parts = c.data.split("|")
+    if len(parts) not in {2, 3}:
+        safe_answer_callback(c.id, text="Invalid request.")
+        return
+
+    vpn_name = parts[1]
+    stage = parts[2] if len(parts) == 3 else "submitted"
+    uid = str(c.from_user.id)
+
+    if stage == "draft":
+        session = user_sessions.get(uid, {})
+        draft = session.get("request_draft")
+        if draft and draft.get("vpn_name") == vpn_name:
+            session.pop("request_draft", None)
+            if not session:
+                user_sessions.pop(uid, None)
+        vpn_info = vpn_prices.get(vpn_name)
+        if vpn_info:
+            detail_text = build_vpn_detail_text(
+                vpn_name,
+                vpn_info["days"],
+                vpn_info["price"],
+                balances.get(uid, 0.0),
+                final_line="⚠ বর্তমানে স্টক নেই।"
+            )
+            bot.edit_message_text(
+                detail_text,
+                c.message.chat.id,
+                c.message.message_id,
+                reply_markup=build_request_order_markup(vpn_name, state="idle"),
+                parse_mode="Markdown"
+            )
+        else:
+            bot.edit_message_text("✅ অনুরোধ বাতিল করা হয়েছে।", c.message.chat.id, c.message.message_id)
+        safe_answer_callback(c.id, text="অনুরোধ বাতিল হয়েছে।")
+        return
+
+    pending_request = get_pending_request(uid, vpn_name)
+    if not pending_request:
+        safe_answer_callback(c.id, text="কোনো পেন্ডিং অনুরোধ নেই।")
+        return
+
+    pending_request["status"] = "cancelled"
+    pending_request["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    data["requested_orders"] = requested_orders
+    save_data(data)
+
+    vpn_info = vpn_prices.get(vpn_name)
+    if not vpn_info:
+        detail_text = "✅ আপনার অনুরোধ বাতিল করা হয়েছে।"
+    else:
+        detail_text = build_vpn_detail_text(
+            vpn_name,
+            vpn_info["days"],
+            vpn_info["price"],
+            balances.get(uid, 0.0),
+            final_line="❌ আপনি অনুরোধটি বাতিল করেছেন।"
+        )
+
+    if vpn_info:
+        bot.edit_message_text(
+            detail_text,
+            c.message.chat.id,
+            c.message.message_id,
+            reply_markup=build_request_order_markup(vpn_name, state="idle"),
+            parse_mode="Markdown"
+        )
+    else:
+        bot.edit_message_text(
+            detail_text,
+            c.message.chat.id,
+            c.message.message_id
+        )
+
+    safe_answer_callback(c.id, text="অনুরোধ বাতিল হয়েছে।")
 
 
 def has_processed_trx(trx_id):
@@ -438,7 +523,8 @@ def vpn_selected(c):
             bal,
             final_line=final_line
         )
-        markup = build_request_order_markup(vpn_name, request_pending=bool(pending_request))
+        state = "pending" if pending_request else "idle"
+        markup = build_request_order_markup(vpn_name, state=state)
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
         safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।" if pending_request else "বর্তমানে স্টক নেই।", show_alert=not pending_request)
         return
@@ -510,7 +596,8 @@ def select_quantity(c):
             bal,
             final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
         )
-        markup = build_request_order_markup(vpn_name, request_pending=bool(pending_request))
+        state = "pending" if pending_request else "idle"
+        markup = build_request_order_markup(vpn_name, state=state)
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
         safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।" if pending_request else "স্টক নেই।", show_alert=not pending_request)
         return
@@ -612,6 +699,68 @@ def handle_request_order(c):
     request_id = f"req_{uuid.uuid4().hex}"
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
 
+    session = user_sessions.setdefault(uid, {})
+    session["request_draft"] = {
+        "vpn_name": vpn_name,
+        "price": price,
+        "days": days,
+        "balance": bal,
+        "initiated_at": timestamp
+    }
+
+    detail_text = build_vpn_detail_text(
+        vpn_name,
+        days,
+        price,
+        bal,
+        final_line="✅ অনুরোধ নিশ্চিত করতে নিচের Confirm Request বোতামে চাপুন।"
+    )
+    markup = build_request_order_markup(vpn_name, state="confirm")
+    bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+
+    safe_answer_callback(c.id, text="অনুরোধ নিশ্চিত করুন।")
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("confirm_request|"))
+def confirm_request_submission(c):
+    parts = c.data.split("|")
+    if len(parts) != 2:
+        safe_answer_callback(c.id, text="Invalid request.")
+        return
+
+    vpn_name = parts[1]
+    vpn_info = vpn_prices.get(vpn_name)
+    if not vpn_info:
+        safe_answer_callback(c.id, text="VPN not found.")
+        return
+
+    uid = str(c.from_user.id)
+    session = user_sessions.get(uid, {})
+    draft = session.get("request_draft")
+
+    if not draft or draft.get("vpn_name") != vpn_name:
+        safe_answer_callback(c.id, text="অনুরোধ সেশন পাওয়া যায়নি।")
+        return
+
+    if get_pending_request(uid, vpn_name):
+        detail_text = build_vpn_detail_text(
+            vpn_name,
+            vpn_info["days"],
+            vpn_info["price"],
+            balances.get(uid, 0.0),
+            final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।"
+        )
+        markup = build_request_order_markup(vpn_name, state="pending")
+        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        safe_answer_callback(c.id, text="অনুরোধ ইতোমধ্যে পেন্ডিং।")
+        session.pop("request_draft", None)
+        if not session:
+            user_sessions.pop(uid, None)
+        return
+
+    request_id = draft.get("id") or f"req_{uuid.uuid4().hex}"
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
     request_entry = {
         "id": request_id,
         "user_id": uid,
@@ -627,12 +776,12 @@ def handle_request_order(c):
 
     detail_text = build_vpn_detail_text(
         vpn_name,
-        days,
-        price,
-        bal,
+        vpn_info["days"],
+        vpn_info["price"],
+        balances.get(uid, 0.0),
         final_line="✅ আপনার অনুরোধ গ্রহণ করা হয়েছে! স্টক এলেই আপনাকে জানানো হবে।"
     )
-    markup = build_request_order_markup(vpn_name, request_pending=True)
+    markup = build_request_order_markup(vpn_name, state="pending")
     bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
 
     safe_answer_callback(c.id, text="অনুরোধ পাঠানো হয়েছে।")
@@ -651,7 +800,9 @@ def handle_request_order(c):
     except Exception as notify_err:
         print(f"[WARN] Failed to notify admin about request: {notify_err}")
 
-    user_sessions.pop(uid, None)
+    session.pop("request_draft", None)
+    if not session:
+        user_sessions.pop(uid, None)
 
 @bot.callback_query_handler(func=lambda c: c.data == "cancel_vpn_selection")
 def cancel_vpn_selection(c):
@@ -732,7 +883,8 @@ def confirm_purchase_callback(c):
                     bal,
                     final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
                 )
-                markup = build_request_order_markup(vpn_name, request_pending=bool(pending_request))
+                state = "pending" if pending_request else "idle"
+                markup = build_request_order_markup(vpn_name, state=state)
             else:
                 message_text = build_vpn_detail_text(
                     vpn_name,
