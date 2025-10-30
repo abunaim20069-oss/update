@@ -1,4 +1,5 @@
 import json, re, sys
+import uuid
 import telebot
 from datetime import datetime
 from telebot.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
@@ -35,10 +36,12 @@ def load_data():
     data.setdefault("orders", {})
     data.setdefault("total_sales", 0.0)
     data.setdefault("processed_transactions", [])
+    data.setdefault("requested_orders", [])
     return data
 
 def save_data(d):
     d["processed_transactions"] = sorted(processed_transactions)
+    d["requested_orders"] = requested_orders
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False, indent=2)
 
@@ -50,6 +53,7 @@ unmatched_payments = data["unmatched_payments"]
 orders             = data["orders"]
 total_sales        = data["total_sales"]
 processed_transactions = set(trx.lower() for trx in data.get("processed_transactions", []))
+requested_orders   = data["requested_orders"]
 
 # Keeps track of ongoing admin actions that require follow-up input.
 admin_sessions = {}
@@ -104,7 +108,8 @@ def admin_menu_markup():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("📊 Total Sales", "📈 Current Stock")
     kb.row("🧾 Pending Payments", "👥 User Lookup")
-    kb.row("➕ Add VPN Account", "⬅️ Main Menu (User)")
+    kb.row("📥 Requested Orders", "➕ Add VPN Account")
+    kb.row("⬅️ Main Menu (User)")
     return kb
 
 def norm_text(s): return " ".join(s.strip().split()).lower() if isinstance(s, str) else ""
@@ -186,6 +191,31 @@ def build_single_purchase_markup(vpn_name, allow_purchase=True, include_add_bala
     markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
 
     return markup
+
+
+def build_request_order_markup(vpn_name, request_pending=False):
+    markup = InlineKeyboardMarkup()
+
+    if not request_pending:
+        markup.add(InlineKeyboardButton("📩 Request Order", callback_data=f"request_order|{vpn_name}"))
+
+    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
+    markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
+
+    return markup
+
+
+def get_pending_request(uid, vpn_name):
+    return next(
+        (
+            req
+            for req in requested_orders
+            if req.get("status", "pending") == "pending"
+            and req.get("user_id") == uid
+            and req.get("vpn_name") == vpn_name
+        ),
+        None
+    )
 
 
 def has_processed_trx(trx_id):
@@ -397,17 +427,20 @@ def vpn_selected(c):
         "max_qty": max_qty
     }
 
+    pending_request = get_pending_request(uid, vpn_name)
+
     if stock_count == 0:
+        final_line = "⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
         detail_text = build_vpn_detail_text(
             vpn_name,
             days,
             price,
             bal,
-            final_line="⚠ বর্তমানে স্টক নেই।"
+            final_line=final_line
         )
-        markup = build_single_purchase_markup(vpn_name, allow_purchase=True)
+        markup = build_request_order_markup(vpn_name, request_pending=bool(pending_request))
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="বর্তমানে স্টক নেই।", show_alert=True)
+        safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।" if pending_request else "বর্তমানে স্টক নেই।", show_alert=not pending_request)
         return
 
     if max_qty <= 0:
@@ -467,16 +500,19 @@ def select_quantity(c):
     bal = balances.get(uid, 0.0)
     stock_count = len(products.get(vpn_name, []))
 
+    pending_request = get_pending_request(uid, vpn_name)
+
     if stock_count == 0:
         detail_text = build_vpn_detail_text(
             vpn_name,
             days,
             price,
             bal,
-            final_line="⚠ বর্তমানে স্টক নেই।"
+            final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
         )
-        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="স্টক নেই।", show_alert=True)
+        markup = build_request_order_markup(vpn_name, request_pending=bool(pending_request))
+        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        safe_answer_callback(c.id, text="অনুরোধ পেন্ডিং রয়েছে।" if pending_request else "স্টক নেই।", show_alert=not pending_request)
         return
 
     affordable_qty = int(bal // price) if price > 0 else stock_count
@@ -536,6 +572,87 @@ def select_quantity(c):
     bot.edit_message_text(summary_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
     safe_answer_callback(c.id, text=f"{selected_qty} টি নির্বাচন করা হয়েছে")
 
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("request_order|"))
+def handle_request_order(c):
+    parts = c.data.split("|")
+    if len(parts) != 2:
+        safe_answer_callback(c.id, text="Invalid request.")
+        return
+
+    vpn_name = parts[1]
+    vpn_info = vpn_prices.get(vpn_name)
+    if not vpn_info:
+        safe_answer_callback(c.id, text="VPN not found.")
+        return
+
+    uid = str(c.from_user.id)
+    price = vpn_info["price"]
+    days = vpn_info["days"]
+    bal = balances.get(uid, 0.0)
+
+    existing_request = next(
+        (req for req in requested_orders if req.get("status", "pending") == "pending" and req.get("user_id") == uid and req.get("vpn_name") == vpn_name),
+        None
+    )
+
+    if existing_request:
+        detail_text = build_vpn_detail_text(
+            vpn_name,
+            days,
+            price,
+            bal,
+            final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।"
+        )
+        markup = build_request_order_markup(vpn_name, request_pending=True)
+        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        safe_answer_callback(c.id, text="অনুরোধ ইতোমধ্যে রয়েছে।")
+        return
+
+    request_id = f"req_{uuid.uuid4().hex}"
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    request_entry = {
+        "id": request_id,
+        "user_id": uid,
+        "vpn_name": vpn_name,
+        "quantity": 1,
+        "status": "pending",
+        "timestamp": timestamp
+    }
+
+    requested_orders.append(request_entry)
+    data["requested_orders"] = requested_orders
+    save_data(data)
+
+    detail_text = build_vpn_detail_text(
+        vpn_name,
+        days,
+        price,
+        bal,
+        final_line="✅ আপনার অনুরোধ গ্রহণ করা হয়েছে! স্টক এলেই আপনাকে জানানো হবে।"
+    )
+    markup = build_request_order_markup(vpn_name, request_pending=True)
+    bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+
+    safe_answer_callback(c.id, text="অনুরোধ পাঠানো হয়েছে।")
+
+    notify_text = (
+        "📩 *New VPN Request*\n"
+        f"└ VPN: *{vpn_name}*\n"
+        f"└ Quantity: 1\n"
+        f"└ User ID: `{uid}`\n"
+        f"└ Requested At: `{timestamp}`\n"
+        "\n/Use the admin menu → 📥 Requested Orders"
+    )
+
+    try:
+        bot.send_message(ADMIN_ID, notify_text, parse_mode="Markdown")
+    except Exception as notify_err:
+        print(f"[WARN] Failed to notify admin about request: {notify_err}")
+
+    user_sessions.pop(uid, None)
+
 @bot.callback_query_handler(func=lambda c: c.data == "cancel_vpn_selection")
 def cancel_vpn_selection(c):
     user_sessions.pop(str(c.from_user.id), None)
@@ -580,6 +697,7 @@ def confirm_purchase_callback(c):
     price = vpn_info["price"]
     days = vpn_info["days"]
     bal = balances.get(uid, 0.0)
+    pending_request = get_pending_request(uid, vpn_name)
 
     if qty < 1 or qty > MAX_PURCHASE_QUANTITY:
         safe_answer_callback(c.id, text="Invalid quantity.")
@@ -612,9 +730,9 @@ def confirm_purchase_callback(c):
                     days,
                     price,
                     bal,
-                    final_line="⚠ বর্তমানে স্টক নেই।"
+                    final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।" if pending_request else "⚠ বর্তমানে স্টক নেই।"
                 )
-                markup = build_single_purchase_markup(vpn_name, allow_purchase=True)
+                markup = build_request_order_markup(vpn_name, request_pending=bool(pending_request))
             else:
                 message_text = build_vpn_detail_text(
                     vpn_name,
@@ -626,7 +744,7 @@ def confirm_purchase_callback(c):
                 markup = build_single_purchase_markup(vpn_name, allow_purchase=False, include_add_balance=True)
 
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        show_alert = (stock_count == 0)
+        show_alert = (stock_count == 0 and not pending_request)
         safe_answer_callback(c.id, text="এই পরিমাণ এখনই নেই।", show_alert=show_alert)
         return
 
@@ -940,6 +1058,47 @@ def show_pending_payments(message):
                 bot.send_message(message.chat.id, f"ℹ️ আরও {remaining} টি রিকুয়েস্ট রয়েছে। পুরোনো রিকুয়েস্টগুলো দেখার জন্য কমান্ডটি আবার ব্যবহার করুন।" + support_footer(), parse_mode="Markdown")
             break
 
+
+@bot.message_handler(func=lambda m: norm_text(m.text) == "📥 requested orders" and str(m.from_user.id) == str(ADMIN_ID))
+def show_requested_orders(message):
+    pending_requests = [req for req in requested_orders if req.get("status", "pending") == "pending"]
+
+    if not pending_requests:
+        bot.send_message(message.chat.id, "✅ বর্তমানে কোনো পেন্ডিং VPN অনুরোধ নেই।" + support_footer(), reply_markup=admin_menu_markup(), parse_mode="Markdown")
+        return
+
+    intro_text = (
+        "📥 *Requested VPN Orders*\n"
+        "অনুরোধগুলো পরিচালনা করতে নিচের বোতামগুলো ব্যবহার করুন।"
+    ) + support_footer()
+    bot.send_message(message.chat.id, intro_text, reply_markup=admin_menu_markup(), parse_mode="Markdown")
+
+    shown = 0
+    for req in pending_requests:
+        markup = InlineKeyboardMarkup()
+        markup.row(
+            InlineKeyboardButton("✅ Fulfill", callback_data=f"admin_fulfill_request|{req['id']}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"admin_reject_request|{req['id']}")
+        )
+        markup.row(InlineKeyboardButton("👤 User Profile", callback_data=f"admin_lookup_user|{req['user_id']}"))
+
+        message_text = (
+            "📩 *VPN Request*\n"
+            f"└ VPN: {req['vpn_name']}\n"
+            f"└ Quantity: {req.get('quantity', 1)}\n"
+            f"└ User ID: `{req['user_id']}`\n"
+            f"└ Requested At: {req.get('timestamp', 'N/A')}"
+        ) + support_footer()
+
+        bot.send_message(message.chat.id, message_text, reply_markup=markup, parse_mode="Markdown")
+
+        shown += 1
+        if shown >= 10:
+            remaining = len(pending_requests) - shown
+            if remaining > 0:
+                bot.send_message(message.chat.id, f"ℹ️ আরও {remaining} টি অনুরোধ রয়েছে। অতিরিক্ত অনুরোধ দেখতে আবার কমান্ডটি ব্যবহার করুন।" + support_footer(), parse_mode="Markdown")
+            break
+
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_confirm_trx|"))
 def admin_confirm_trx(c):
     if str(c.from_user.id) != str(ADMIN_ID):
@@ -1067,6 +1226,145 @@ def admin_reject_trx(c):
     else:
         safe_answer_callback(c.id, text="TRX আর পাওয়া যাচ্ছে না।")
         bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("admin_fulfill_request|"))
+def admin_fulfill_request(c):
+    if str(c.from_user.id) != str(ADMIN_ID):
+        safe_answer_callback(c.id, text="Unauthorized")
+        return
+
+    req_id = c.data.split("|")[1]
+    request_entry = next((req for req in requested_orders if req.get("id") == req_id), None)
+
+    if not request_entry or request_entry.get("status") != "pending":
+        safe_answer_callback(c.id, text="এই অনুরোধটি আর উপলব্ধ নেই।")
+        bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
+        return
+
+    admin_sessions[c.from_user.id] = {
+        "type": "fulfill_request",
+        "request_id": req_id,
+        "origin_chat_id": c.message.chat.id,
+        "origin_message_id": c.message.message_id
+    }
+
+    prompt = bot.send_message(
+        c.message.chat.id,
+        f"✍️ `{request_entry['vpn_name']}` অনুরোধ পূরণ করতে অ্যাকাউন্ট তথ্য পাঠান (উদাহরণ: Gmail:example, Password:example)।",
+        reply_markup=ForceReply(),
+        parse_mode="Markdown"
+    )
+    bot.register_next_step_handler(prompt, process_admin_fulfill_request, req_id)
+    safe_answer_callback(c.id, text=f"Provide account details for {request_entry['vpn_name']}.")
+
+
+def process_admin_fulfill_request(message, request_id):
+    if str(message.from_user.id) != str(ADMIN_ID):
+        bot.reply_to(message, "Unauthorized.")
+        return
+
+    session = admin_sessions.get(message.from_user.id)
+    if not session or session.get("type") != "fulfill_request" or session.get("request_id") != request_id:
+        bot.reply_to(message, "❌ এই অনুরোধটি আর সক্রিয় নেই।", reply_markup=admin_menu_markup())
+        return
+
+    request_entry = next((req for req in requested_orders if req.get("id") == request_id), None)
+    if not request_entry or request_entry.get("status") != "pending":
+        admin_sessions.pop(message.from_user.id, None)
+        bot.reply_to(message, "⚠️ এই অনুরোধটি আর উপলব্ধ নেই।", reply_markup=admin_menu_markup())
+        return
+
+    details_text = (message.text or "").strip()
+    if not details_text:
+        retry = bot.reply_to(message, "❌ অনুগ্রহ করে অ্যাকাউন্ট তথ্য লিখুন।", reply_markup=ForceReply())
+        bot.register_next_step_handler(retry, process_admin_fulfill_request, request_id)
+        return
+
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    request_entry["status"] = "fulfilled"
+    request_entry["fulfilled_at"] = timestamp
+    request_entry["fulfilled_by"] = str(message.from_user.id)
+    request_entry["details"] = details_text
+
+    user_id = request_entry["user_id"]
+    vpn_name = request_entry["vpn_name"]
+
+    ensure_user(user_id)
+    orders.setdefault(user_id, []).append({
+        "vpn_name": vpn_name,
+        "item": {
+            "manual_details": details_text,
+            "via_request": True
+        },
+        "timestamp": timestamp
+    })
+
+    data["orders"] = orders
+    data["requested_orders"] = requested_orders
+    save_data(data)
+
+    user_message = (
+        f"🛍 {vpn_name} অনুরোধ\n"
+        "✅ আপনার VPN অনুরোধটি পূরণ করা হয়েছে!\n\n"
+        f"{details_text}"
+    ) + support_footer()
+
+    try:
+        bot.send_message(int(user_id), user_message)
+    except Exception as notify_err:
+        bot.send_message(message.chat.id, f"⚠️ ব্যবহারকারীকে মেসেজ পাঠানো যায়নি: {notify_err}")
+
+    session_info = admin_sessions.pop(message.from_user.id, None)
+    if session_info:
+        bot.edit_message_text(
+            f"✅ Fulfilled request `{request_id}`\nUser `{user_id}`\nVPN: {vpn_name}",
+            session_info["origin_chat_id"],
+            session_info["origin_message_id"],
+            reply_markup=None,
+            parse_mode="Markdown"
+        )
+
+    bot.reply_to(message, "✅ অনুরোধটি সফলভাবে পূরণ করা হয়েছে।", reply_markup=admin_menu_markup())
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("admin_reject_request|"))
+def admin_reject_request(c):
+    if str(c.from_user.id) != str(ADMIN_ID):
+        safe_answer_callback(c.id, text="Unauthorized")
+        return
+
+    req_id = c.data.split("|")[1]
+    request_entry = next((req for req in requested_orders if req.get("id") == req_id), None)
+
+    if not request_entry or request_entry.get("status") != "pending":
+        safe_answer_callback(c.id, text="এই অনুরোধটি আর উপলব্ধ নেই।")
+        bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
+        return
+
+    request_entry["status"] = "rejected"
+    request_entry["resolved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    data["requested_orders"] = requested_orders
+    save_data(data)
+
+    user_id = request_entry["user_id"]
+    vpn_name = request_entry["vpn_name"]
+
+    try:
+        bot.send_message(int(user_id), f"❌ আপনার {vpn_name} অনুরোধটি বর্তমানে পূরণ করা যাচ্ছে না। পরে আবার চেষ্টা করুন অথবা সাপোর্টে যোগাযোগ করুন।" + support_footer())
+    except Exception as notify_err:
+        bot.send_message(c.message.chat.id, f"⚠️ ব্যবহারকারীকে মেসেজ পাঠানো যায়নি: {notify_err}")
+
+    bot.edit_message_text(
+        f"❌ Rejected request `{req_id}` (User `{user_id}`)",
+        c.message.chat.id,
+        c.message.message_id,
+        reply_markup=None,
+        parse_mode="Markdown"
+    )
+
+    safe_answer_callback(c.id, text="Request rejected.")
 
 
 @bot.message_handler(func=lambda m: norm_text(m.text) == "👥 user lookup" and str(m.from_user.id) == str(ADMIN_ID))
