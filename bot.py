@@ -167,6 +167,15 @@ def format_request_pending_message(vpn_name, days):
     )
 
 
+def format_request_delivery_message(vpn_name, days, detail_lines):
+    base = [
+        "✅ Your requested VPN is delivered!\n",
+        f"🛍 {vpn_name} {days} Days ✅\n"
+    ]
+    base.extend(detail_lines)
+    return "\n".join(base)
+
+
 def build_quantity_keyboard(vpn_name, max_qty, selected_qty=None, include_confirm=False):
     markup = InlineKeyboardMarkup(row_width=3)
 
@@ -1453,6 +1462,7 @@ def process_admin_fulfill_request(message, request_id):
 
     user_id = request_entry["user_id"]
     vpn_name = request_entry["vpn_name"]
+    days = vpn_prices.get(vpn_name, {}).get("days", request_entry.get("days", ""))
 
     ensure_user(user_id)
     orders.setdefault(user_id, []).append({
@@ -1468,11 +1478,20 @@ def process_admin_fulfill_request(message, request_id):
     data["requested_orders"] = requested_orders
     save_data(data)
 
-    user_message = (
-        f"🛍 {vpn_name} অনুরোধ\n"
-        "✅ আপনার VPN অনুরোধটি পূরণ করা হয়েছে!\n\n"
-        f"{details_text}"
-    ) + support_footer()
+    detail_lines = []
+
+    for line in details_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if ":" in stripped:
+            label, value = stripped.split(":", 1)
+            detail_lines.append(f"└ {label.strip()} ➡️ {value.strip()}")
+        else:
+            detail_lines.append(stripped)
+
+    user_message = format_request_delivery_message(vpn_name, days, detail_lines)
+    user_message += support_footer()
 
     try:
         bot.send_message(int(user_id), user_message)
