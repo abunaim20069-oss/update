@@ -104,6 +104,20 @@ def main_menu_markup():
     kb.row("📦 My Orders", "💰 My Balance")
     return kb
 
+
+def admin_feature_overview():
+    return (
+        "🛠 *Admin Commands*\n"
+        "• /order_message — Pending অনুরোধকারী সবাইকে মেসেজ পাঠান\n"
+        "• /all_message — সকল ব্যবহারকারীকে ব্রডকাস্ট পাঠান\n"
+        "• 📊 Total Sales — নির্দিষ্ট দিনের সেলস রিপোর্ট\n"
+        "• 📈 Current Stock — স্টক তালিকা দেখুন\n"
+        "• 🧾 Pending Payments — অসমাপ্ত পেমেন্ট প্রসেস\n"
+        "• 📥 Requested Orders — ফ্রি অর্ডার অনুরোধ ম্যানেজ করুন\n"
+        "• ➕ Add VPN Account — নতুন VPN অ্যাকাউন্ট যোগ করুন\n"
+        "• ⬅️ Main Menu (User) — ইউজার ভিউতে ফিরে যান"
+    )
+
 def admin_menu_markup():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("📊 Total Sales", "📈 Current Stock")
@@ -234,6 +248,16 @@ def get_pending_request(uid, vpn_name):
         ),
         None
     )
+
+
+def get_all_user_ids():
+    user_ids = set()
+    user_ids.update(str(uid) for uid in balances.keys())
+    user_ids.update(str(uid) for uid in orders.keys())
+    user_ids.update(str(req.get("user_id")) for req in requested_orders if req.get("user_id"))
+    user_ids.update(str(owner) for owner in pending_payments.values() if owner)
+    user_ids.discard(str(ADMIN_ID))
+    return [uid for uid in user_ids if uid]
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("cancel_request|"))
@@ -450,7 +474,7 @@ def start_or_admin(message):
     )
 
     if uid == str(ADMIN_ID):
-        bot.send_message(message.chat.id, "👋 Welcome Admin! Choose an option:", reply_markup=admin_menu_markup())
+        bot.send_message(message.chat.id, admin_feature_overview(), reply_markup=admin_menu_markup(), parse_mode="Markdown")
     else:
         if WELCOME_PHOTO_FILE_ID:
             try:
@@ -1117,7 +1141,7 @@ def admin_bkash_nagad_parser(m):
 # ========== ADMIN FEATURES ==========
 @bot.message_handler(func=lambda m: norm_text(m.text) == "⬅️ main menu (user)" and str(m.from_user.id) == str(ADMIN_ID))
 def back_to_main_menu_admin(message):
-    bot.send_message(message.chat.id, "Returning to main user menu.", reply_markup=main_menu_markup())
+    bot.send_message(message.chat.id, admin_feature_overview(), reply_markup=main_menu_markup(), parse_mode="Markdown")
 
 @bot.message_handler(func=lambda m: norm_text(m.text) == "📊 total sales" and str(m.from_user.id) == str(ADMIN_ID))
 def prompt_sales_report_date(message):
@@ -1552,13 +1576,14 @@ def admin_broadcast_requests(c):
         safe_answer_callback(c.id, text="Unauthorized")
         return
 
-    pending_users = {req["user_id"] for req in requested_orders if req.get("status", "pending") == "pending"}
+    pending_users = {str(req["user_id"]) for req in requested_orders if req.get("status", "pending") == "pending" and req.get("user_id")}
 
     if not pending_users:
         safe_answer_callback(c.id, text="📭 কোনো পেন্ডিং অনুরোধ নেই।")
         bot.send_message(c.message.chat.id, "✅ বর্তমানে কোনো পেন্ডিং VPN অনুরোধ নেই।")
         return
 
+    admin_sessions.pop(c.from_user.id, None)
     admin_sessions[c.from_user.id] = {
         "type": "broadcast_request",
         "targets": list(pending_users)
@@ -1579,7 +1604,9 @@ def process_broadcast_message(message):
         return
 
     session = admin_sessions.get(message.from_user.id)
-    if not session or session.get("type") != "broadcast_request":
+    session_type = session.get("type") if session else None
+
+    if not session or session_type not in {"broadcast_request", "broadcast_all"}:
         bot.reply_to(message, "❌ এই মুহূর্তে কোনো ব্রডকাস্ট সেশন নেই।", reply_markup=admin_menu_markup())
         return
 
@@ -1608,6 +1635,54 @@ def process_broadcast_message(message):
         f"📢 Broadcast summary:\n✅ Delivered: {delivered}\n⚠️ Failed: {failed}",
         reply_markup=admin_menu_markup()
     )
+
+
+@bot.message_handler(commands=['order_message'])
+def command_broadcast_requests(message):
+    if str(message.from_user.id) != str(ADMIN_ID):
+        return
+    pending_users = {str(req["user_id"]) for req in requested_orders if req.get("status", "pending") == "pending" and req.get("user_id")}
+
+    if not pending_users:
+        bot.reply_to(message, "📭 কোনো পেন্ডিং অনুরোধ নেই।", reply_markup=admin_menu_markup())
+        return
+
+    admin_sessions.pop(message.from_user.id, None)
+    admin_sessions[message.from_user.id] = {
+        "type": "broadcast_request",
+        "targets": list(pending_users)
+    }
+
+    prompt = bot.reply_to(
+        message,
+        "📝 যে বার্তাটি সকল পেন্ডিং অনুরোধকারীদের পাঠাতে চান, সেটি লিখুন।",
+        reply_markup=ForceReply()
+    )
+    bot.register_next_step_handler(prompt, process_broadcast_message)
+
+
+@bot.message_handler(commands=['all_message'])
+def command_broadcast_all(message):
+    if str(message.from_user.id) != str(ADMIN_ID):
+        return
+    targets = get_all_user_ids()
+
+    if not targets:
+        bot.reply_to(message, "📭 এখনও কোনো ব্যবহারকারী নেই যার কাছে বার্তা পাঠাতে পারবেন।", reply_markup=admin_menu_markup())
+        return
+
+    admin_sessions.pop(message.from_user.id, None)
+    admin_sessions[message.from_user.id] = {
+        "type": "broadcast_all",
+        "targets": targets
+    }
+
+    prompt = bot.reply_to(
+        message,
+        "📝 যে বার্তাটি সকল ব্যবহারকারীকে পাঠাতে চান, সেটি লিখুন।",
+        reply_markup=ForceReply()
+    )
+    bot.register_next_step_handler(prompt, process_broadcast_message)
 
 
 @bot.message_handler(func=lambda m: norm_text(m.text) == "👥 user lookup" and str(m.from_user.id) == str(ADMIN_ID))
