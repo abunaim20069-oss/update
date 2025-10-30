@@ -190,7 +190,6 @@ def build_quantity_keyboard(vpn_name, max_qty, selected_qty=None, include_confir
     if include_confirm and selected_qty:
         markup.add(InlineKeyboardButton("✅ Confirm Purchase", callback_data=f"confirm_purchase|{vpn_name}|{selected_qty}"))
 
-    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
     markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
 
     return markup
@@ -205,7 +204,6 @@ def build_single_purchase_markup(vpn_name, allow_purchase=True, include_add_bala
     if include_add_balance:
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
 
-    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
     markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
 
     return markup
