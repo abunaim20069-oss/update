@@ -117,7 +117,7 @@ def ensure_user(uid): balances.setdefault(uid, 0.0); orders.setdefault(uid, [])
 
 
 def support_footer():
-    return f"\n\n📞 Support: {SUPPORT_CONTACT}"
+    return ""
 
 
 def build_vpn_detail_text(vpn_name, days, price, balance, extra_lines=None, final_line=None, include_footer=True):
@@ -1385,7 +1385,7 @@ def admin_reject_trx(c):
         data["pending_payments"] = pending_payments
         save_data(data)
         try:
-            bot.send_message(int(uid), f"❌ আপনার পেমেন্টটি যাচাই করা যায়নি। TRX `{trx.upper()}` পুনরায় চেক করে আবার পাঠান অথবা {SUPPORT_CONTACT} এ যোগাযোগ করুন।")
+            bot.send_message(int(uid), f"❌ আপনার পেমেন্টটি যাচাই করা যায়নি। TRX `{trx.upper()}` পুনরায় চেক করে আবার পাঠান অথবা সরাসরি আমাদের সাপোর্ট টিমে বার্তা দিন।")
         except Exception as notify_err:
             bot.send_message(c.message.chat.id, f"⚠️ ব্যবহারকারীকে মেসেজ পাঠানো যায়নি: {notify_err}")
 
