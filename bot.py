@@ -380,7 +380,7 @@ def vpn_selected(c):
     vpn_info = vpn_prices.get(vpn_name)
     if not vpn_info:
         bot.edit_message_text("❌ VPN not found.", c.message.chat.id, c.message.message_id)
-        safe_answer_callback(c.id, text="VPN not found.", show_alert=True)
+        safe_answer_callback(c.id, text="VPN not found.")
         return
 
     price = vpn_info["price"]
@@ -407,7 +407,7 @@ def vpn_selected(c):
         )
         markup = build_single_purchase_markup(vpn_name, allow_purchase=True)
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="বর্তমানে স্টক নেই।", show_alert=True)
+        safe_answer_callback(c.id, text="বর্তমানে স্টক নেই।")
         return
 
     if max_qty <= 0:
@@ -420,7 +420,7 @@ def vpn_selected(c):
         )
         markup = build_single_purchase_markup(vpn_name, allow_purchase=False, include_add_balance=True)
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।", show_alert=True)
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।")
         return
 
     if max_qty == 1:
@@ -433,7 +433,7 @@ def vpn_selected(c):
         )
         markup = build_single_purchase_markup(vpn_name, allow_purchase=True)
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="একটি অ্যাকাউন্ট কেনা যাবে।", show_alert=True)
+        safe_answer_callback(c.id, text="একটি অ্যাকাউন্ট কেনা যাবে।")
         return
 
     instruction_text = build_vpn_detail_text(vpn_name, days, price, bal)
@@ -446,19 +446,19 @@ def vpn_selected(c):
 def select_quantity(c):
     parts = c.data.split("|")
     if len(parts) != 3:
-        safe_answer_callback(c.id, text="Invalid selection.", show_alert=True)
+        safe_answer_callback(c.id, text="Invalid selection.")
         return
 
     vpn_name = parts[1]
     try:
         selected_qty = int(parts[2])
     except ValueError:
-        safe_answer_callback(c.id, text="Invalid quantity.", show_alert=True)
+        safe_answer_callback(c.id, text="Invalid quantity.")
         return
 
     vpn_info = vpn_prices.get(vpn_name)
     if not vpn_info:
-        safe_answer_callback(c.id, text="VPN not found.", show_alert=True)
+        safe_answer_callback(c.id, text="VPN not found.")
         return
 
     uid = str(c.from_user.id)
@@ -476,7 +476,7 @@ def select_quantity(c):
             final_line="⚠ বর্তমানে স্টক নেই।"
         )
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="স্টক নেই।", show_alert=True)
+        safe_answer_callback(c.id, text="স্টক নেই।")
         return
 
     affordable_qty = int(bal // price) if price > 0 else stock_count
@@ -494,11 +494,11 @@ def select_quantity(c):
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
         markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।", show_alert=True)
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।")
         return
 
     if selected_qty < 1 or selected_qty > max_qty:
-        safe_answer_callback(c.id, text=f"১ থেকে {max_qty} এর মধ্যে সংখ্যা নির্বাচন করুন।", show_alert=True)
+        safe_answer_callback(c.id, text=f"১ থেকে {max_qty} এর মধ্যে সংখ্যা নির্বাচন করুন।")
         markup = build_quantity_keyboard(vpn_name, max_qty)
         instruction_text = build_vpn_detail_text(
             vpn_name,
@@ -560,20 +560,20 @@ def confirm_purchase_callback(c):
     else:
         parts = c.data.split("|")
         if len(parts) != 3:
-            safe_answer_callback(c.id, text="Invalid confirmation.", show_alert=True)
+            safe_answer_callback(c.id, text="Invalid confirmation.")
             return
         vpn_name = parts[1]
         try:
             qty = int(parts[2])
         except ValueError:
-            safe_answer_callback(c.id, text="Invalid quantity.", show_alert=True)
+            safe_answer_callback(c.id, text="Invalid quantity.")
             return
 
     vpn_info = vpn_prices.get(vpn_name)
     if not vpn_info:
         bot.edit_message_text("❌ VPN not found.", c.message.chat.id, c.message.message_id)
         bot.send_message(c.message.chat.id, "⬅️ Back to menu:", reply_markup=main_menu_markup())
-        safe_answer_callback(c.id, text="VPN not found.", show_alert=True)
+        safe_answer_callback(c.id, text="VPN not found.")
         return
 
     uid = str(c.from_user.id)
@@ -582,7 +582,7 @@ def confirm_purchase_callback(c):
     bal = balances.get(uid, 0.0)
 
     if qty < 1 or qty > MAX_PURCHASE_QUANTITY:
-        safe_answer_callback(c.id, text="Invalid quantity.", show_alert=True)
+        safe_answer_callback(c.id, text="Invalid quantity.")
         return
 
     vpn_stock = products.get(vpn_name, [])
@@ -626,7 +626,7 @@ def confirm_purchase_callback(c):
                 markup = build_single_purchase_markup(vpn_name, allow_purchase=False, include_add_balance=True)
 
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="এই পরিমাণ এখনই নেই।", show_alert=True)
+        safe_answer_callback(c.id, text="এই পরিমাণ এখনই নেই।")
         return
 
     total_cost = price * qty
@@ -646,7 +646,7 @@ def confirm_purchase_callback(c):
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
         markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
         bot.edit_message_text(message_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।", show_alert=True)
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।")
         return
 
     selected_items = [vpn_stock.pop(0) for _ in range(qty)]
@@ -686,7 +686,7 @@ def confirm_purchase_callback(c):
 
     bot.edit_message_text(detail_message, c.message.chat.id, c.message.message_id, parse_mode="Markdown")
     bot.send_message(c.message.chat.id, "✅ ক্রয় সফল হয়েছে! আপনার VPN বিস্তারিত দেখতে '📦 My Orders' এ যান।", reply_markup=main_menu_markup())
-    safe_answer_callback(c.id, text="ক্রয় সফল হয়েছে!", show_alert=True)
+    safe_answer_callback(c.id, text="ক্রয় সফল হয়েছে!")
 
     user_sessions.pop(uid, None)
 
@@ -942,18 +942,18 @@ def show_pending_payments(message):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_confirm_trx|"))
 def admin_confirm_trx(c):
     if str(c.from_user.id) != str(ADMIN_ID):
-        safe_answer_callback(c.id, text="Unauthorized", show_alert=True)
+        safe_answer_callback(c.id, text="Unauthorized")
         return
 
     trx = c.data.split("|")[1]
 
     if has_processed_trx(trx):
-        safe_answer_callback(c.id, text="এই TRX ইতোমধ্যে প্রসেস করা হয়েছে।", show_alert=True)
+        safe_answer_callback(c.id, text="এই TRX ইতোমধ্যে প্রসেস করা হয়েছে।")
         bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
         return
 
     if trx not in pending_payments:
-        safe_answer_callback(c.id, text="এই TRX ইতোমধ্যে প্রসেস করা হয়েছে।", show_alert=True)
+        safe_answer_callback(c.id, text="এই TRX ইতোমধ্যে প্রসেস করা হয়েছে।")
         bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
         return
 
@@ -1042,7 +1042,7 @@ def handle_admin_confirm_amount(message, trx):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_reject_trx|"))
 def admin_reject_trx(c):
     if str(c.from_user.id) != str(ADMIN_ID):
-        safe_answer_callback(c.id, text="Unauthorized", show_alert=True)
+        safe_answer_callback(c.id, text="Unauthorized")
         return
 
     trx = c.data.split("|")[1]
@@ -1064,7 +1064,7 @@ def admin_reject_trx(c):
         )
         safe_answer_callback(c.id, text=f"Rejected {trx.upper()}.")
     else:
-        safe_answer_callback(c.id, text="TRX আর পাওয়া যাচ্ছে না।", show_alert=True)
+        safe_answer_callback(c.id, text="TRX আর পাওয়া যাচ্ছে না।")
         bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
 
 
@@ -1124,7 +1124,7 @@ def process_admin_user_lookup(message):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_lookup_user|"))
 def admin_lookup_user_callback(c):
     if str(c.from_user.id) != str(ADMIN_ID):
-        safe_answer_callback(c.id, text="Unauthorized", show_alert=True)
+        safe_answer_callback(c.id, text="Unauthorized")
         return
 
     target_uid = c.data.split("|")[1]
