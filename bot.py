@@ -115,18 +115,36 @@ def support_footer():
     return f"\n\n📞 Support: {SUPPORT_CONTACT}"
 
 
-def build_vpn_detail_text(vpn_name, days, price, balance, extra_lines=None, include_footer=True):
+def build_vpn_detail_text(vpn_name, days, price, balance, extra_lines=None, final_line=None, include_footer=True):
+    day_label = "Day" if days == 1 else "Days"
+    price_str = f"{price:.2f}".rstrip("0").rstrip(".")
+
     lines = [
         f"🛍 {vpn_name}",
-        f"🕒 Duration: {days} দিন",
-        f"💰 Price: ৳{price}",
-        f"💳 Your Balance: ৳{balance:.2f}",
-        "📦 Quantity selection: 'কয়টা নিবেন নিচে সিলেক্ট করুন'"
+        "│",
+        f"├ 🕒 Duration: {days} {day_label}",
+        f"├ 💰 Price: ৳{price_str}",
+        f"├ 💳 Your Balance: ৳{balance:.2f}"
     ]
 
-    if extra_lines:
-        lines.append("")
-        lines.extend(extra_lines)
+    if final_line is None:
+        final_line = "🔘 কয়টা নিবেন নিচে সিলেক্ট করুন"
+
+    has_extra = bool(extra_lines)
+
+    if has_extra:
+        lines.append("│")
+        for idx, extra in enumerate(extra_lines):
+            is_last_extra = idx == len(extra_lines) - 1
+            connector = "└" if final_line is None and is_last_extra else "├"
+            lines.append(f"{connector} {extra}")
+        if final_line is not None:
+            lines.append("│")
+    else:
+        lines.append("│")
+
+    if final_line is not None:
+        lines.append(f"└ {final_line}")
 
     detail_text = "\n".join(lines)
     if include_footer:
@@ -363,7 +381,8 @@ def vpn_selected(c):
             days,
             price,
             bal,
-            extra_lines=["🚫 এই VPN বর্তমানে স্টকে নেই।"]
+            extra_lines=["🚫 এই VPN বর্তমানে স্টকে নেই।"],
+            final_line="🔁 অনুগ্রহ করে অন্য VPN নির্বাচন করুন"
         )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
@@ -383,7 +402,8 @@ def vpn_selected(c):
             extra_lines=[
                 f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
                 "💰 আপনার ব্যালেন্স এই VPN নেওয়ার জন্য পর্যাপ্ত নয়। আগে ব্যালেন্স যোগ করুন।"
-            ]
+            ],
+            final_line="➕ Add Balance বোতাম চাপুন"
         )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
@@ -404,8 +424,7 @@ def vpn_selected(c):
         bal,
         extra_lines=[
             f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
-            f"আপনার ব্যালেন্স অনুযায়ী সর্বোচ্চ {max_qty} টি নিতে পারবেন।",
-            "নিচের বোতাম থেকে পছন্দের সংখ্যাটি নির্বাচন করুন।"
+            f"আপনার ব্যালেন্স অনুযায়ী সর্বোচ্চ {max_qty} টি নিতে পারবেন।"
         ]
     )
 
@@ -444,7 +463,8 @@ def select_quantity(c):
             days,
             price,
             bal,
-            extra_lines=["🚫 এই VPN এখনই স্টকে নেই।"]
+            extra_lines=["🚫 এই VPN এখনই স্টকে নেই।"],
+            final_line="🔁 অনুগ্রহ করে অন্য VPN নির্বাচন করুন"
         )
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, parse_mode="Markdown")
         safe_answer_callback(c.id, text="স্টক নেই।", show_alert=True)
@@ -461,7 +481,8 @@ def select_quantity(c):
             bal,
             extra_lines=[
                 "💰 আপনার ব্যালেন্স পর্যাপ্ত নয়। আগে ব্যালেন্স যোগ করে আবার চেষ্টা করুন।"
-            ]
+            ],
+            final_line="➕ Add Balance বোতাম চাপুন"
         )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
@@ -506,9 +527,9 @@ def select_quantity(c):
             f"✅ নির্বাচিত সংখ্যা: {selected_qty} টি",
             f"মোট খরচ হবে: ৳{total_cost:.2f}",
             f"ক্রয়ের পর ব্যালেন্স থাকবে: ৳{remaining_balance:.2f}",
-            f"স্টকে বাকি থাকবে আনুমানিক {max(remaining_stock, 0)} টি।",
-            "নিচের ✅ কনফার্ম বোতামে চাপুন অথবা অন্য সংখ্যা নির্বাচন করুন।"
-        ]
+            f"স্টকে বাকি থাকবে আনুমানিক {max(remaining_stock, 0)} টি।"
+        ],
+        final_line="✅ নিচের কনফার্ম বোতামে চাপুন অথবা অন্য সংখ্যা নির্বাচন করুন।"
     )
 
     markup = build_quantity_keyboard(vpn_name, max_qty, selected_qty=selected_qty, include_confirm=True)
@@ -579,8 +600,7 @@ def confirm_purchase_callback(c):
                 bal,
                 extra_lines=[
                     f"স্টকে আছে মাত্র {stock_count} টি অ্যাকাউন্ট।",
-                    f"অনুগ্রহ করে সর্বোচ্চ {max_qty} টি পর্যন্ত নির্বাচন করুন।",
-                    "নিচের বোতাম থেকে নতুন সংখ্যা বেছে নিন।"
+                    f"অনুগ্রহ করে সর্বোচ্চ {max_qty} টি পর্যন্ত নির্বাচন করুন।"
                 ]
             )
             markup = build_quantity_keyboard(vpn_name, max_qty)
@@ -594,7 +614,8 @@ def confirm_purchase_callback(c):
                 days,
                 price,
                 bal,
-                extra_lines=["🚫 এই মুহূর্তে স্টক বা ব্যালেন্সের কারণে এই VPN নেওয়া যাচ্ছে না।"]
+                extra_lines=["🚫 এই মুহূর্তে স্টক বা ব্যালেন্সের কারণে এই VPN নেওয়া যাচ্ছে না।"],
+                final_line="🏠 Main Menu বোতাম ব্যবহার করুন"
             )
             markup = InlineKeyboardMarkup()
             markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
@@ -614,7 +635,8 @@ def confirm_purchase_callback(c):
                 f"এই ক্রয়ের জন্য মোট দরকার: ৳{total_cost:.2f}",
                 f"বর্তমানে আপনার ব্যালেন্স আছে: ৳{bal:.2f}",
                 "💰 প্রথমে ব্যালেন্স যোগ করে আবার চেষ্টা করুন।"
-            ]
+            ],
+            final_line="➕ Add Balance বোতাম চাপুন"
         )
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
