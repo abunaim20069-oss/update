@@ -198,14 +198,17 @@ def build_request_order_markup(vpn_name, state="idle"):
 
     if state == "idle":
         markup.add(InlineKeyboardButton("📩 Request Order", callback_data=f"request_order|{vpn_name}"))
+        markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
     elif state == "confirm":
-        markup.add(InlineKeyboardButton("✅ Confirm Request", callback_data=f"confirm_request|{vpn_name}"))
-        markup.add(InlineKeyboardButton("❌ Cancel Request", callback_data=f"cancel_request|{vpn_name}|draft"))
+        markup.row(
+            InlineKeyboardButton("✅ Confirm", callback_data=f"confirm_request|{vpn_name}"),
+            InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_request|{vpn_name}|draft")
+        )
     elif state == "pending":
-        markup.add(InlineKeyboardButton("❌ Cancel Request", callback_data=f"cancel_request|{vpn_name}|submitted"))
-
-    markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
-    markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
+        markup.row(
+            InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"),
+            InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_request|{vpn_name}|submitted")
+        )
 
     return markup
 
