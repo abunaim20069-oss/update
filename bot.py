@@ -216,7 +216,7 @@ def build_request_order_markup(vpn_name, state="idle"):
 
     if state == "idle":
         markup.add(InlineKeyboardButton("📩 Request Order", callback_data=f"request_order|{vpn_name}"))
-        markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
+        markup.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back_to_main_menu"))
     elif state == "confirm":
         markup.row(
             InlineKeyboardButton("✅ Confirm", callback_data=f"confirm_request|{vpn_name}"),
