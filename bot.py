@@ -91,7 +91,7 @@ product_fields = {
 
 # Payment gateway number (updated to your specified number)
 PAYMENT_NUMBER = "01739089344" 
-SUPPORT_CONTACT = "@Abdurrahman0999"
+SUPPORT_CONTACT = ""
 
 # Helper functions
 def main_menu_markup():
@@ -112,7 +112,9 @@ def ensure_user(uid): balances.setdefault(uid, 0.0); orders.setdefault(uid, [])
 
 
 def support_footer():
-    return f"\n\n📞 Support: {SUPPORT_CONTACT}"
+    if SUPPORT_CONTACT:
+        return f"\n\n📞 Support: {SUPPORT_CONTACT}"
+    return ""
 
 
 def build_vpn_detail_text(vpn_name, days, price, balance, extra_lines=None, final_line=None, include_footer=True):
@@ -293,7 +295,7 @@ def start_or_admin(message):
     # Define your welcome message
     welcome_message = (
         "আসসালামু আলাইকুম ❤️‍🩹 *PremiumOne* এ আপনাকে স্বাগতম!\n"
-        f"যে কোনও সাহায্যের জন্য যোগাযোগ করুন {SUPPORT_CONTACT}\n\n"
+        "যে কোনও সাহায্যের জন্য সরাসরি আমাদের সাপোর্ট টিমে বার্তা দিন।\n\n"
         "*কীভাবে ব্যালেন্স যোগ করবেন* 💳\n"
         "1️⃣ `💳 Add Balance` এ ক্লিক করুন\n"
         "2️⃣ `bKash` অথবা `Nagad` বেছে নিন\n"
@@ -303,7 +305,7 @@ def start_or_admin(message):
         "1️⃣ `🛍️ Buy Products` এ যান\n"
         "2️⃣ পছন্দের VPN নির্বাচন করুন\n"
         "3️⃣ ব্যালেন্স যথেষ্ট হলে `Buy Now` চাপুন\n\n"
-        f"✅ যে কোনও সময় সরাসরি এই চ্যাটে মেসেজ করুন অথবা {SUPPORT_CONTACT} এ পিং করুন।"
+        "✅ যে কোনও সময় সরাসরি এই চ্যাটে মেসেজ করুন, আমরা দ্রুত সাপোর্ট দেব।"
     )
 
     if uid == str(ADMIN_ID):
@@ -400,7 +402,6 @@ def vpn_selected(c):
             price,
             bal,
             extra_lines=[
-                f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
                 "💰 আপনার ব্যালেন্স এই VPN নেওয়ার জন্য পর্যাপ্ত নয়। আগে ব্যালেন্স যোগ করুন।"
             ],
             final_line="➕ Add Balance বোতাম চাপুন"
@@ -421,11 +422,7 @@ def vpn_selected(c):
         vpn_name,
         days,
         price,
-        bal,
-        extra_lines=[
-            f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
-            f"আপনার ব্যালেন্স অনুযায়ী সর্বোচ্চ {max_qty} টি নিতে পারবেন।"
-        ]
+        bal
     )
 
     markup = build_quantity_keyboard(vpn_name, max_qty)
@@ -499,11 +496,7 @@ def select_quantity(c):
             days,
             price,
             bal,
-            extra_lines=[
-                f"স্টকে রয়েছে {stock_count} টি অ্যাকাউন্ট।",
-                f"আপনার ব্যালেন্স অনুযায়ী সর্বোচ্চ {max_qty} টি নিতে পারবেন।",
-                f"অনুগ্রহ করে ১ থেকে {max_qty} এর মধ্যে একটি সংখ্যা নির্বাচন করুন।"
-            ]
+            final_line=f"🔘 অনুগ্রহ করে ১ থেকে {max_qty} এর মধ্যে একটি সংখ্যা নির্বাচন করুন।"
         )
         bot.edit_message_text(instruction_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
         return
@@ -1048,7 +1041,7 @@ def admin_reject_trx(c):
         data["pending_payments"] = pending_payments
         save_data(data)
         try:
-            bot.send_message(int(uid), f"❌ আপনার পেমেন্টটি যাচাই করা যায়নি। TRX `{trx.upper()}` পুনরায় চেক করে আবার পাঠান অথবা {SUPPORT_CONTACT} এ যোগাযোগ করুন।")
+            bot.send_message(int(uid), f"❌ আপনার পেমেন্টটি যাচাই করা যায়নি। TRX `{trx.upper()}` পুনরায় চেক করে আবার পাঠান অথবা সরাসরি আমাদের সাপোর্ট টিমে বার্তা দিন।")
         except Exception as notify_err:
             bot.send_message(c.message.chat.id, f"⚠️ ব্যবহারকারীকে মেসেজ পাঠানো যায়নি: {notify_err}")
 
