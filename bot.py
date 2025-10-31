@@ -1824,39 +1824,51 @@ def process_add_vpn_account(message, vpn_name):
         return
 
     required_fields_for_vpn = product_fields.get(vpn_name, DEFAULT_PRODUCT_FIELDS)
-    blocks = [block.strip() for block in re.split(r"\n{2,}", txt) if block.strip()]
-
+    lines = [line.rstrip() for line in txt.splitlines()]
     added_accounts = []
+    current_details = {}
 
-    for idx, block in enumerate(blocks, start=1):
-        details = {}
-        for line in block.splitlines():
-            if ':' not in line:
-                continue
-            key, value = line.split(':', 1)
-            standardized_key = normalize_field_key(key)
-            if not standardized_key:
-                continue
-            details[standardized_key] = value.strip()
-
-        if not details:
-            continue
-
-        missing_fields = []
-        for field in required_fields_for_vpn:
-            standardized_field_key = normalize_field_key(field)
-            if not details.get(standardized_field_key):
-                missing_fields.append(field)
-
-        if missing_fields:
+    def finalize_current(idx):
+        missing = [field for field in required_fields_for_vpn if not current_details.get(normalize_field_key(field))]
+        if missing:
             bot.reply_to(
                 message,
-                f"❌ Account #{idx} এর তথ্য অসম্পূর্ণ। অনুপস্থিত: {', '.join(missing_fields)}. দয়া করে আবার চেষ্টা করুন।"
+                f"❌ Account #{idx} এর তথ্য অসম্পূর্ণ। অনুপস্থিত: {', '.join(missing)}. দয়া করে আবার চেষ্টা করুন।"
             )
             bot.send_message(message.chat.id, "⬅️ Back to Admin Menu:", reply_markup=admin_menu_markup())
-            return
+            return False
+        added_accounts.append(dict(current_details))
+        current_details.clear()
+        return True
 
-        added_accounts.append(details)
+    line_index = 0
+    account_counter = 1
+
+    while line_index < len(lines):
+        line = lines[line_index].strip()
+        if not line:
+            if current_details:
+                if not finalize_current(account_counter):
+                    return
+                account_counter += 1
+            line_index += 1
+            continue
+
+        if ':' in line:
+            key, value = line.split(':', 1)
+            normalized_key = normalize_field_key(key)
+            if normalized_key:
+                current_details[normalized_key] = value.strip()
+                required_keys_normalized = [normalize_field_key(field) for field in required_fields_for_vpn]
+                if all(current_details.get(k) for k in required_keys_normalized):
+                    if not finalize_current(account_counter):
+                        return
+                    account_counter += 1
+        line_index += 1
+
+    if current_details:
+        if not finalize_current(account_counter):
+            return
 
     if not added_accounts:
         bot.reply_to(message, "❌ কোনো বৈধ অ্যাকাউন্ট তথ্য পাওয়া যায়নি। অনুগ্রহ করে সঠিক ফরম্যাটে আবার দিন।")
