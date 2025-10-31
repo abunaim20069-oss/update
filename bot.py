@@ -1681,6 +1681,16 @@ def command_broadcast_all(message):
     bot.register_next_step_handler(prompt, process_broadcast_message)
 
 
+@bot.message_handler(func=lambda m: m.text and m.text.strip().lower() in {"/ordermessage", "ordermessage"})
+def command_broadcast_requests_alias(message):
+    command_broadcast_requests(message)
+
+
+@bot.message_handler(func=lambda m: m.text and m.text.strip().lower() in {"/allmassage", "allmassage"})
+def command_broadcast_all_alias(message):
+    command_broadcast_all(message)
+
+
 @bot.message_handler(func=lambda m: norm_text(m.text) == "👥 user lookup" and str(m.from_user.id) == str(ADMIN_ID))
 def prompt_admin_user_lookup(message):
     admin_sessions[message.from_user.id] = {"type": "user_lookup", "last_lookup": None}
