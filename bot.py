@@ -260,6 +260,11 @@ def get_all_user_ids():
     return [uid for uid in user_ids if uid]
 
 
+def normalize_field_key(raw_key):
+    cleaned = re.sub(r"[^A-Za-z0-9 ]", "", (raw_key or "")).strip().lower()
+    return cleaned.replace(" ", "_")
+
+
 @bot.callback_query_handler(func=lambda c: c.data.startswith("cancel_request|"))
 def cancel_user_request(c):
     parts = c.data.split("|")
@@ -1819,7 +1824,7 @@ def process_add_vpn_account(message, vpn_name):
         return
 
     required_fields_for_vpn = product_fields.get(vpn_name, DEFAULT_PRODUCT_FIELDS)
-    blocks = [block.strip() for block in txt.split('\n\n') if block.strip()]
+    blocks = [block.strip() for block in re.split(r"\n{2,}", txt) if block.strip()]
 
     added_accounts = []
 
@@ -1829,12 +1834,17 @@ def process_add_vpn_account(message, vpn_name):
             if ':' not in line:
                 continue
             key, value = line.split(':', 1)
-            standardized_key = key.strip().lower().replace(" ", "_")
+            standardized_key = normalize_field_key(key)
+            if not standardized_key:
+                continue
             details[standardized_key] = value.strip()
+
+        if not details:
+            continue
 
         missing_fields = []
         for field in required_fields_for_vpn:
-            standardized_field_key = field.lower().replace(" ", "_")
+            standardized_field_key = normalize_field_key(field)
             if not details.get(standardized_field_key):
                 missing_fields.append(field)
 
@@ -1847,6 +1857,11 @@ def process_add_vpn_account(message, vpn_name):
             return
 
         added_accounts.append(details)
+
+    if not added_accounts:
+        bot.reply_to(message, "❌ কোনো বৈধ অ্যাকাউন্ট তথ্য পাওয়া যায়নি। অনুগ্রহ করে সঠিক ফরম্যাটে আবার দিন।")
+        bot.send_message(message.chat.id, "⬅️ Back to Admin Menu:", reply_markup=admin_menu_markup())
+        return
 
     products.setdefault(vpn_name, []).extend(added_accounts)
     data["products"] = products
