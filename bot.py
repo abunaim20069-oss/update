@@ -87,7 +87,7 @@ DEFAULT_PRODUCT_FIELDS = ["Gmail", "Password"]
 MAX_PURCHASE_QUANTITY = 5
 
 product_fields = {
-    "Express VPN": ["Gmail", "Password", "PC Key"],
+    "Express VPN": ["PC Key"],
     "HMA VPN": ["Activation Key"], # HMA will only have an activation key
     # Default for others (if not specified here, it falls back to DEFAULT_PRODUCT_FIELDS)
 }
@@ -1813,39 +1813,50 @@ def admin_selected_vpn_to_add(c):
 
 def process_add_vpn_account(message, vpn_name):
     txt = (message.text or "").strip()
-    details = {}
-    lines = txt.split('\n')
-    
-    # --- MODIFIED: Parse input based on expected fields ---
-    required_fields_for_vpn = product_fields.get(vpn_name, DEFAULT_PRODUCT_FIELDS) # Default to Gmail/Password
-    
-    parsed_count = 0
-    for line in lines:
-        if ':' in line:
-            key, value = line.split(':', 1)
-            # Standardize key to lowercase and replace spaces with underscores for storage
-            standardized_key = key.strip().lower().replace(" ", "_")
-            details[standardized_key] = value.strip()
-            parsed_count += 1
-    
-    # Check if all required fields are present
-    missing_fields = []
-    for field in required_fields_for_vpn:
-        standardized_field_key = field.lower().replace(" ", "_")
-        if standardized_field_key not in details or not details[standardized_field_key]:
-            missing_fields.append(field)
-
-    if missing_fields:
-        bot.reply_to(message, f"❌ Invalid format. The following fields are required: {', '.join(missing_fields)}. Please try again.")
+    if not txt:
+        bot.reply_to(message, "❌ কোনো তথ্য পাওয়া যায়নি। অনুগ্রহ করে সঠিক ফরম্যাটে আবার দিন।")
         bot.send_message(message.chat.id, "⬅️ Back to Admin Menu:", reply_markup=admin_menu_markup())
         return
 
-    # If all required fields are present, add to products
-    products.setdefault(vpn_name, []).append(details) # Store the details dictionary as is
+    required_fields_for_vpn = product_fields.get(vpn_name, DEFAULT_PRODUCT_FIELDS)
+    blocks = [block.strip() for block in txt.split('\n\n') if block.strip()]
+
+    added_accounts = []
+
+    for idx, block in enumerate(blocks, start=1):
+        details = {}
+        for line in block.splitlines():
+            if ':' not in line:
+                continue
+            key, value = line.split(':', 1)
+            standardized_key = key.strip().lower().replace(" ", "_")
+            details[standardized_key] = value.strip()
+
+        missing_fields = []
+        for field in required_fields_for_vpn:
+            standardized_field_key = field.lower().replace(" ", "_")
+            if not details.get(standardized_field_key):
+                missing_fields.append(field)
+
+        if missing_fields:
+            bot.reply_to(
+                message,
+                f"❌ Account #{idx} এর তথ্য অসম্পূর্ণ। অনুপস্থিত: {', '.join(missing_fields)}. দয়া করে আবার চেষ্টা করুন।"
+            )
+            bot.send_message(message.chat.id, "⬅️ Back to Admin Menu:", reply_markup=admin_menu_markup())
+            return
+
+        added_accounts.append(details)
+
+    products.setdefault(vpn_name, []).extend(added_accounts)
     data["products"] = products
     save_data(data)
-    
-    bot.reply_to(message, f"✅ Successfully added 1 account for *{vpn_name}* to stock. Current stock: {len(products[vpn_name])}", parse_mode="Markdown")
+
+    bot.reply_to(
+        message,
+        f"✅ {len(added_accounts)} টি অ্যাকাউন্ট *{vpn_name}* স্টকে যোগ করা হয়েছে। বর্তমান স্টক: {len(products[vpn_name])}",
+        parse_mode="Markdown"
+    )
     bot.send_message(message.chat.id, "⬅️ Back to Admin Menu:", reply_markup=admin_menu_markup())
 
 
