@@ -109,7 +109,7 @@ def admin_feature_overview():
     return (
         "🛠 *Admin Commands*\n"
         "• /order_message — Pending অনুরোধকারী সবাইকে মেসেজ পাঠান\n"
-        "• /all_message — সকল ব্যবহারকারীকে ব্রডকাস্ট পাঠান\n"
+        "• /all_massage — সকল ব্যবহারকারীকে ব্রডকাস্ট পাঠান\n"
         "• 📊 Total Sales — নির্দিষ্ট দিনের সেলস রিপোর্ট\n"
         "• 📈 Current Stock — স্টক তালিকা দেখুন\n"
         "• 🧾 Pending Payments — অসমাপ্ত পেমেন্ট প্রসেস\n"
@@ -1288,10 +1288,6 @@ def show_requested_orders(message):
                 bot.send_message(message.chat.id, f"ℹ️ আরও {remaining} টি অনুরোধ রয়েছে। অতিরিক্ত অনুরোধ দেখতে আবার কমান্ডটি ব্যবহার করুন।" + support_footer(), parse_mode="Markdown")
             break
 
-    broadcast_kb = InlineKeyboardMarkup()
-    broadcast_kb.add(InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast_requests"))
-    bot.send_message(message.chat.id, "📣 একসাথে মেসেজ পাঠাতে 'Broadcast Message' ক্লিক করুন।", reply_markup=broadcast_kb)
-
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_confirm_trx|"))
 def admin_confirm_trx(c):
     if str(c.from_user.id) != str(ADMIN_ID):
@@ -1661,7 +1657,7 @@ def command_broadcast_requests(message):
     bot.register_next_step_handler(prompt, process_broadcast_message)
 
 
-@bot.message_handler(commands=['all_message'])
+@bot.message_handler(commands=['all_massage'])
 def command_broadcast_all(message):
     if str(message.from_user.id) != str(ADMIN_ID):
         return
