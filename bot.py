@@ -730,16 +730,25 @@ def handle_request_order(c):
     )
 
     if existing_request:
+        detail_text = format_request_pending_message(vpn_name, days)
+        markup = build_request_order_markup(vpn_name, state="pending")
+        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup)
+        safe_answer_callback(c.id, text="অনুরোধ ইতোমধ্যে রয়েছে।")
+        return
+
+    if bal < price:
         detail_text = build_vpn_detail_text(
             vpn_name,
             days,
             price,
             bal,
-            final_line="⏳ আপনার অনুরোধ ইতোমধ্যে পেন্ডিং অবস্থায় রয়েছে।"
+            final_line="💰 আপনার ব্যালেন্স পর্যাপ্ত নয়। আগে Add Balance করুন।"
         )
-        markup = build_request_order_markup(vpn_name, request_pending=True)
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
+        markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
         bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
-        safe_answer_callback(c.id, text="অনুরোধ ইতোমধ্যে রয়েছে।")
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।")
         return
 
     request_id = f"req_{uuid.uuid4().hex}"
@@ -781,11 +790,31 @@ def confirm_request_submission(c):
         return
 
     uid = str(c.from_user.id)
+    price = vpn_info["price"]
+    bal = balances.get(uid, 0.0)
     session = user_sessions.get(uid, {})
     draft = session.get("request_draft")
 
     if not draft or draft.get("vpn_name") != vpn_name:
         safe_answer_callback(c.id, text="অনুরোধ সেশন পাওয়া যায়নি।")
+        return
+
+    if bal < price:
+        detail_text = build_vpn_detail_text(
+            vpn_name,
+            vpn_info["days"],
+            price,
+            bal,
+            final_line="💰 আপনার ব্যালেন্স পর্যাপ্ত নয়। আগে Add Balance করুন।"
+        )
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("➕ Add Balance", callback_data="add_balance_shortcut"))
+        markup.add(InlineKeyboardButton("❌ Cancel", callback_data="cancel_vpn_selection"))
+        bot.edit_message_text(detail_text, c.message.chat.id, c.message.message_id, reply_markup=markup, parse_mode="Markdown")
+        safe_answer_callback(c.id, text="ব্যালেন্স পর্যাপ্ত নয়।")
+        session.pop("request_draft", None)
+        if not session:
+            user_sessions.pop(uid, None)
         return
 
     if get_pending_request(uid, vpn_name):
